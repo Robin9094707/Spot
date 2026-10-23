@@ -1,0 +1,63 @@
+name: Build Spot IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build unsigned iPhone IPA
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build for iPhone
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Spot.xcodeproj \
+            -scheme Spot \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          mkdir -p build/ipa/Payload
+          ditto build/DerivedData/Build/Products/Release-iphoneos/Spot.app build/ipa/Payload/Spot.app
+          cd build/ipa
+          /usr/bin/zip -qry ../Spot-unsigned.ipa Payload
+          /usr/bin/unzip -t ../Spot-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Spot-unsigned-IPA
+          path: build/Spot-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Spot-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
